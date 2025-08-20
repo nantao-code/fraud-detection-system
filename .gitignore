@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files (large datasets)
+data/*.csv
+data/*.xlsx
+data/*.parquet
+!data/test_creditcard.csv
+!data/test_creditcard1.csv
+
+# Model files (can be regenerated)
+models/*.joblib
+models/*.pkl
+models/*.pickle
+
+# Logs
+logs/*.log
+logs/*.json
+
+# Temporary files
+temp_configs_*/
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PMML files (optional - comment out if needed)
+pmmls/
+
+# Plots (can be regenerated)
+plots/*.png
+plots/*.jpg
+plots/*.pdf
+
+# Features (can be regenerated)
+features/*.json

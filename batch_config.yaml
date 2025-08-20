@@ -1,0 +1,31 @@
+# 批量训练配置文件示例
+# 适配新的UnifiedConfig配置系统 - 使用单一配置文件
+# 通过base_config引用基础配置，仅覆盖需要修改的特定配置
+
+# 引用基础配置文件
+base_config: "config.yaml"
+
+# 批处理设置
+batch:
+  max_workers: 4  # 最大并行进程数，默认使用CPU核心数
+  retry_times: 3  # 失败重试次数
+
+# 参数网格 - 定义要测试的参数组合
+parameter_grid:
+  # 样本数据文件
+  paths.input_data:
+    - "data/test_creditcard.csv"
+    # - "data/test_creditcard1.csv"
+  
+  # 过采样方法
+  modeling.imbalance_method:
+    - "smote"
+    - "random_over"
+    # - "none"
+
+# 要测试的模型列表
+models:
+  - "XGB"
+  - "RF"
+  - "LR"
+  # - "LGB"

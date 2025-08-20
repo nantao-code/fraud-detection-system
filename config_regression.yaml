@@ -1,0 +1,119 @@
+# 回归任务配置文件
+# 用于欺诈损失金额预测等回归任务
+
+feature_engineering:
+  corr_threshold: 0.8
+  create_interaction_features: true
+  create_polynomial_features: true
+  create_statistical_features: true
+  early_stopping_rounds: 50
+  eval_metric: rmse
+  iv_threshold: 0.1
+  missing_rate_threshold: 0.3
+  polynomial_degree: 2
+  # 回归任务指标
+  primary_metric_regression: neg_root_mean_squared_error
+  scoring_metrics_regression:
+  - neg_root_mean_squared_error
+  - neg_mean_absolute_error
+  - r2
+  target_column: fraud_amount  # 回归任务的目标变量
+  unique_value_threshold: 10
+  use_advanced_engineering: true
+  use_category_feature: true
+  use_corr_selection: true
+  use_importance_selection: true
+  use_missing_selection: true
+  vif_threshold: 10.0
+
+logging:
+  level: INFO
+  file: logs/{input_data}_{imbalance_method}_{model_name}_{timestamp}_training.log
+  logs_dir: logs
+
+modeling:
+  early_stopping_rounds: 100
+  handle_imbalance: false  # 回归任务不需要处理不平衡
+  imbalance_method: none
+  model_type: RF_REG
+  # 分类模型列表（默认禁用）
+  models: []
+  # 回归模型列表
+  regression_models:
+  - RIDGE
+  - XGB_REG
+  - RF_REG
+  - LGB_REG
+  n_iter: 10
+  n_splits: 5
+  random_state: 42
+  test_size: 0.3
+  use_feature_engineering: true
+  use_hyperparameter_tuning: true
+  validation_split_ratio: 0.1
+  
+  # 回归模型参数配置
+  ridge_regression:
+    alpha: [0.1, 1.0, 10.0]
+    solver: "auto"
+    max_iter: 1000
+    tol: 0.0001
+  
+  xgboost_regression:
+    n_estimators: [500, 1000, 1500]
+    learning_rate: [0.01, 0.1, 0.3]
+    max_depth: [3, 6, 9]
+    eval_metric: "rmse"
+    subsample: [0.8, 1.0]
+    colsample_bytree: [0.8, 1.0]
+  
+  random_forest_regression:
+    n_estimators: [100, 200, 300]
+    max_depth: [None, 10, 20, 30]
+    min_samples_split: [2, 5, 10]
+    min_samples_leaf: [1, 2, 4]
+  
+  lightgbm_regression:
+    n_estimators: [500, 1000, 1500]
+    learning_rate: [0.01, 0.1, 0.3]
+    max_depth: [-1, 5, 10]
+    num_leaves: [31, 50, 100]
+    feature_fraction: [0.8, 1.0]
+    bagging_fraction: [0.8, 1.0]
+    bagging_freq: [1, 5]
+    min_child_samples: [20, 50, 100]
+
+monitoring:
+  alerts:
+    email_enabled: false
+    email_recipients: []
+    webhook_enabled: false
+    webhook_url: ''
+  drift_detection:
+    sample_size: 1000
+    threshold: 0.05
+  performance_thresholds:
+    # 分类任务性能阈值
+    classification:
+      accuracy: 0.75
+      auc: 0.8
+      precision: 0.7
+      recall: 0.65
+    # 回归任务性能阈值
+    regression:
+      mse: 0.1
+      rmse: 0.3
+      mae: 0.25
+      r2: 0.7
+  retention_days: 30
+
+paths:
+  data_path: data
+  input_data: data/fraud_loss_data.csv  # 回归数据文件
+  model_output: models/{input_data}_{model_name}_regression_model.joblib
+  pipeline_model_output: models/pipeline_{input_data}_{model_name}_regression.joblib
+  pipeline_results_output: models/pipeline_{input_data}_{model_name}_regression_results.json
+  plot_output: plots/{input_data}_{model_name}_{plot_type}_regression_plot.png
+  final_features_output: features/{input_data}_{model_name}_regression_final_features.json
+  comparison_output: models/regression_comparison_{data_name}_{timestamp}.csv
+  pmml_model_output: pmmls/pipeline_{input_data}_{model_name}_regression.pmml
