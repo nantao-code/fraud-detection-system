@@ -1,0 +1,63 @@
+# 特征工程改进功能配置文件
+# 展示了如何使用新的类别特征编码和基于F检验的特征选择
+
+feature_engineering:
+  # 数据预处理配置
+  missing_strategy: "median"  # 缺失值填充策略: median, mean, most_frequent
+  outlier_method: "iqr"     # 异常值处理方法: iqr, zscore, modified_zscore
+  outlier_threshold: 1.5    # 异常值阈值
+  transform_method: "yeo-johnson"  # 特征变换方法: yeo-johnson, box-cox
+  scale_method: "standard"  # 特征缩放方法: standard, minmax, robust
+  
+  # 类别特征编码策略
+  # 选项: ordinal (序号编码), onehot (独热编码)
+  # 建议: 树模型用ordinal，线性模型用onehot
+  encoding_method: "onehot"
+  
+  # 特征增加配置
+  create_polynomial_features: false
+  polynomial_degree: 2
+  create_interaction_features: false
+  create_statistical_features: false
+  create_binning_features: false
+  
+  # 特征选择配置
+  missing_rate_threshold: 0.3      # 缺失率阈值
+  iv_threshold: 0.1                  # IV值阈值（仅分类任务）
+  corr_threshold: 0.8                # 相关性阈值
+  
+  # 基于方差的特征选择
+  use_variance_selection: false
+  variance_threshold: 0.01
+  
+  # 基于卡方检验的特征选择（仅分类任务）
+  use_chi2_selection: false
+  chi2_k: 20
+  
+  # 基于互信息的特征选择
+  use_mutual_info_selection: false
+  mutual_info_k: 20
+  
+  # 基于特征重要性的特征选择
+  use_importance_selection: false
+  importance_threshold: 0.01
+  importance_model: "random_forest"
+  
+  # 新增：基于F检验的特征-目标相关性选择
+  # 回归任务使用f_regression，分类任务使用f_classif
+  use_f_regression_selection: true
+  f_regression_k: 15  # 选择前K个最相关的特征
+  
+  # PCA降维配置
+  use_pca: false
+  pca_components: 0.95  # 保留95%的方差，或指定具体数值
+
+# 模型配置
+modeling:
+  task_type: "regression"  # 任务类型: regression, classification
+  model_type: "LR"        # 模型类型: LR, RF, XGB, LGB等
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/feature_engineering_improvements.log"

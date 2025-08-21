@@ -99,7 +99,7 @@ class ModelFactory:
         return model, param_grid
     
     @staticmethod
-    def _create_xgboost(config: Dict[str, Any]) -> Tuple[xgb.XGBClassifier, Dict[str, Any]]:
+    def _create_xgboost_classifier(config: Dict[str, Any]) -> Tuple[xgb.XGBClassifier, Dict[str, Any]]:
         """
         创建XGBoost模型 (优化版)
         
@@ -146,7 +146,7 @@ class ModelFactory:
         return model, param_grid
     
     @staticmethod
-    def _create_random_forest(config: Dict[str, Any]) -> Tuple[RandomForestClassifier, Dict[str, Any]]:
+    def _create_random_forest_classifier(config: Dict[str, Any]) -> Tuple[RandomForestClassifier, Dict[str, Any]]:
         """
         创建随机森林模型
         
@@ -186,7 +186,7 @@ class ModelFactory:
         return model, param_grid
     
     @staticmethod
-    def _create_lightgbm(config: Dict[str, Any]) -> Tuple[lgb.LGBMClassifier, Dict[str, Any]]:
+    def _create_lightgbm_classifier(config: Dict[str, Any]) -> Tuple[lgb.LGBMClassifier, Dict[str, Any]]:
         """
         创建LightGBM模型 (优化版)
         

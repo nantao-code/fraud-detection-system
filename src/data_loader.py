@@ -57,13 +57,14 @@ class DataLoader:
         logging.info(f"成功加载数据，形状: {df.shape}")
         return df
     
-    def validate_data(self, df: pd.DataFrame, dataset_type: str = 'train') -> bool:
+    def validate_data(self, df: pd.DataFrame, dataset_type: str = 'train', task_type: str = 'classification') -> bool:
         """
         验证数据完整性
         
         Args:
             df: 要验证的数据集
             dataset_type: 数据集类型
+            task_type: 任务类型 ('classification' 或 'regression')
         
         Returns:
             是否通过验证
@@ -90,13 +91,25 @@ class DataLoader:
                 logging.error(f"训练集缺少目标变量: {target_col}")
                 return False
             
-            # 检查目标变量分布
-            target_dist = df[target_col].value_counts()
-            if len(target_dist) < 2:
-                logging.error("目标变量类别不足2个")
-                return False
+            # 检查目标变量分布和任务类型的一致性
+            target_values = df[target_col].dropna()
+            unique_values = target_values.nunique()
             
-            logging.info(f"目标变量分布:\n{target_dist}")
+            if task_type == 'classification':
+                target_dist = target_values.value_counts()
+                if len(target_dist) < 2:
+                    logging.error("目标变量类别不足2个")
+                    return False
+                logging.info(f"目标变量分布:\n{target_dist}")
+            else:  # regression
+                # 检查回归任务的目标变量是否适合
+                if unique_values <= 2:
+                    logging.warning(
+                        f"警告：回归任务的目标变量只有 {unique_values} 个唯一值 ({sorted(target_values.unique())}). "
+                        f"这可能更适合分类任务。请确认任务类型设置是否正确。"
+                    )
+                
+                logging.info(f"回归任务目标变量统计:\n{target_values.describe()}")
         
         # 检查缺失值
         missing_summary = df.isnull().sum()
@@ -163,9 +176,15 @@ class DataSplitter:
         """
         self.config = config
     
-    def split_data(self, df: pd.DataFrame, feature_cols: list, target_col: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    def split_data(self, df: pd.DataFrame, feature_cols: list, target_col: str, task_type: str = 'classification') -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
         """
         分割数据集
+        
+        Args:
+            df: 数据集
+            feature_cols: 特征列列表
+            target_col: 目标变量列名
+            task_type: 任务类型 ('classification' 或 'regression')
         
         Returns:
             X_train, X_test, y_train, y_test
@@ -177,9 +196,11 @@ class DataSplitter:
         
         test_size = self.config.get('modeling.test_size', 0.3)
         random_state = self.config.get('modeling.random_state', 42)
-        stratify = y if self.config.get('modeling.stratify', True) else None
         
-        logging.info(f"分割数据集，测试集比例: {test_size}")
+        # 仅在分类任务中启用分层抽样
+        stratify = y if task_type == 'classification' and self.config.get('modeling.stratify', True) else None
+        
+        logging.info(f"分割数据集，测试集比例: {test_size}, 任务类型: {task_type}")
         
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state, stratify=stratify

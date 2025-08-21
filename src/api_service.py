@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import pandas as pd
+import numpy as np
 import uvicorn
 from typing import List, Dict, Any, Optional
 import logging
@@ -28,11 +29,12 @@ class BatchPredictionRequest(BaseModel):
     model_version: Optional[str] = Field(default="latest", description="模型版本")
 
 class PredictionResponse(BaseModel):
-    prediction: int = Field(..., description="预测结果")
-    probability: float = Field(..., description="预测概率")
+    prediction: float = Field(..., description="预测结果")
+    probability: Optional[float] = Field(None, description="预测概率(分类任务)")
     model_name: str = Field(..., description="模型名称")
     model_version: str = Field(..., description="模型版本")
     timestamp: str = Field(..., description="预测时间")
+    task_type: str = Field(..., description="任务类型(classification/regression)")
 
 class BatchPredictionResponse(BaseModel):
     predictions: List[PredictionResponse] = Field(..., description="预测结果列表")
@@ -135,10 +137,11 @@ class APIService:
                 
                 return PredictionResponse(
                     prediction=results['predictions'][0],
-                    probability=results['probabilities'][0],
+                    probability=results.get('probabilities', [None])[0],
                     model_name=results['model_name'],
                     model_version=results['model_version'],
-                    timestamp=results['timestamp']
+                    timestamp=results['timestamp'],
+                    task_type=results.get('task_type', 'unknown')
                 )
                 
             except Exception as e:
@@ -165,21 +168,32 @@ class APIService:
                 predictions = [
                     PredictionResponse(
                         prediction=results['predictions'][i],
-                        probability=results['probabilities'][i],
+                        probability=results.get('probabilities', [None] * len(results['predictions']))[i],
                         model_name=results['model_name'],
                         model_version=results['model_version'],
-                        timestamp=results['timestamp']
+                        timestamp=results['timestamp'],
+                        task_type=results.get('task_type', 'unknown')
                     )
                     for i in range(len(results['predictions']))
                 ]
                 
                 # 统计摘要
+                predictions_values = [p.prediction for p in predictions]
                 summary = {
                     'total_count': len(predictions),
-                    'positive_count': sum(p.prediction for p in predictions),
-                    'negative_count': len(predictions) - sum(p.prediction for p in predictions),
-                    'avg_probability': np.mean([p.probability for p in predictions])
+                    'mean_prediction': float(np.mean(predictions_values)),
+                    'min_prediction': float(np.min(predictions_values)),
+                    'max_prediction': float(np.max(predictions_values)),
+                    'std_prediction': float(np.std(predictions_values))
                 }
+                
+                # 如果是分类任务，添加分类统计
+                if results.get('task_type') == 'classification':
+                    summary.update({
+                        'positive_count': int(sum(1 for p in predictions_values if p > 0.5)),
+                        'negative_count': int(sum(1 for p in predictions_values if p <= 0.5)),
+                        'avg_probability': float(np.mean([p.probability for p in predictions if p.probability is not None]))
+                    })
                 
                 return BatchPredictionResponse(
                     predictions=predictions,

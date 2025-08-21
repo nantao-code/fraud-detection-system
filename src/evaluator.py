@@ -17,9 +17,11 @@ from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, r2_score,
     mean_absolute_percentage_error
 )
+from sklearn.inspection import permutation_importance
 import logging
 import os
 import joblib
+import json
 from pathlib import Path
 
 
@@ -41,8 +43,8 @@ class ModelEvaluator:
         plt.rcParams['axes.unicode_minus'] = False
     
     def evaluate_model(self, model, X_train: pd.DataFrame, y_train: pd.Series,
-                      X_test: pd.DataFrame, y_test: pd.Series, 
-                      task_type: str = 'classification') -> Dict[str, Any]:
+                      X_test: pd.DataFrame, y_test: pd.Series, model_name: str, 
+                      task_type: str) -> Dict[str, Any]:
         """
         评估模型性能
         
@@ -58,27 +60,22 @@ class ModelEvaluator:
             评估结果字典
         """
         if task_type == 'classification':
-            return self._evaluate_classification(model, X_train, y_train, X_test, y_test)
+            return self._evaluate_classification(model, X_train, y_train, X_test, y_test, model_name)
+        elif task_type == 'regression':
+            return self._evaluate_regression(model, X_train, y_train, X_test, y_test, model_name)
         else:
-            return self._evaluate_regression(model, X_train, y_train, X_test, y_test)
+            self.logger.error(f"不支持的任务类型: {task_type}")
+            return None
     
     def _evaluate_classification(self, model, X_train: pd.DataFrame, y_train: pd.Series,
-                                X_test: pd.DataFrame, y_test: pd.Series) -> Dict[str, Any]:
+                                X_test: pd.DataFrame, y_test: pd.Series, model_name: str) -> Dict[str, Any]:
         """评估分类模型"""
         # 训练集预测
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)
         
-        # 获取预测概率
-        y_train_proba = None
-        y_test_proba = None
-        
-        if hasattr(model, 'predict_proba'):
-            try:
-                y_train_proba = model.predict_proba(X_train)
-                y_test_proba = model.predict_proba(X_test)
-            except:
-                pass
+        y_train_proba = model.predict_proba(X_train)[:, 1]
+        y_test_proba = model.predict_proba(X_test)[:, 1]
         
         # 计算指标
         train_metrics = self._calculate_classification_metrics(y_train, y_train_pred, y_train_proba)
@@ -90,19 +87,20 @@ class ModelEvaluator:
             'confusion_matrix': confusion_matrix(y_test, y_test_pred).tolist()
         }
         
+        # 绘制可视化图表
+        self._plot_score_distribution(y_train_proba, y_test_proba, model_name)
+        self._plot_ks_curve(y_test, y_test_proba, model_name)
+        self._plot_roc_curve(y_train, y_train_proba, y_test, y_test_proba, model_name) 
+        
         return {
             'train_metrics': train_metrics,
             'test_metrics': test_metrics,
-            'detailed_report': detailed_report,
-            'predictions': {
-                'y_true': y_test.values,
-                'y_pred': y_test_pred,
-                'y_proba': y_test_proba[:, 1] if y_test_proba is not None else None
-            }
+            'detailed_report': detailed_report
         }
     
     def _evaluate_regression(self, model, X_train: pd.DataFrame, y_train: pd.Series,
-                           X_test: pd.DataFrame, y_test: pd.Series) -> Dict[str, Any]:
+                           X_test: pd.DataFrame, y_test: pd.Series, model_name: str) -> Dict[str, Any]:
+
         """评估回归模型"""
         # 训练集预测
         y_train_pred = model.predict(X_train)
@@ -112,22 +110,13 @@ class ModelEvaluator:
         train_metrics = self._calculate_regression_metrics(y_train, y_train_pred)
         test_metrics = self._calculate_regression_metrics(y_test, y_test_pred)
         
-        # 计算残差
-        train_residuals = y_train - y_train_pred
-        test_residuals = y_test - y_test_pred
+        # 绘图
+        self._plot_regression_score_distribution(y_test, y_test_pred, model_name)
+
         
         return {
             'train_metrics': train_metrics,
             'test_metrics': test_metrics,
-            'predictions': {
-                'y_true': y_test.values,
-                'y_pred': y_test_pred,
-                'residuals': test_residuals.values
-            },
-            'residuals': {
-                'train_residuals': train_residuals.values,
-                'test_residuals': test_residuals.values
-            }
         }
     
     def _calculate_classification_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, 
@@ -137,16 +126,39 @@ class ModelEvaluator:
             'accuracy': accuracy_score(y_true, y_pred),
             'precision': precision_score(y_true, y_pred, average='weighted'),
             'recall': recall_score(y_true, y_pred, average='weighted'),
-            'f1': f1_score(y_true, y_pred, average='weighted')
+            'f1': f1_score(y_true, y_pred, average='weighted'),
+            'auc': roc_auc_score(y_true, y_proba),
+            'ks': self._calculate_ks(y_true, y_proba)
         }
         
-        if y_proba is not None and len(np.unique(y_true)) == 2:
-            try:
-                metrics['auc'] = roc_auc_score(y_true, y_proba[:, 1])
-            except:
-                metrics['auc'] = 0.0
-        
         return metrics
+    
+    def _calculate_ks(self, y_true: np.ndarray, y_score: np.ndarray) -> float:
+        """计算KS统计量（使用TPR-FPR差值最大值）
+        
+        Args:
+            y_true: 真实标签
+            y_score: 预测概率
+            
+        Returns:
+            KS统计量值（max(TPR - FPR)）
+        """
+        try:
+            # 确保输入是numpy数组
+            y_true = np.array(y_true)
+            y_score = np.array(y_score)
+            
+            # 计算ROC曲线
+            fpr, tpr, thresholds = roc_curve(y_true, y_score)
+            
+            # 计算KS统计量为TPR-FPR的最大差值
+            ks_stat = max(tpr - fpr)
+            
+            return ks_stat
+            
+        except Exception as e:
+            self.logger.error(f"计算KS统计量时出错: {str(e)}")
+            return 0.0
     
     def _calculate_regression_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
         """计算回归评估指标"""
@@ -168,118 +180,131 @@ class ModelEvaluator:
             'r2': r2,
             'mape': mape
         }
+
+    # 分类任务绘图函数
+    def _plot_roc_curve(self, y_train: pd.Series, y_pred_proba_train: np.ndarray,
+                       y_test: pd.Series, y_pred_proba_test: np.ndarray, model_name: str):
+        """绘制ROC曲线"""
+        from sklearn.metrics import roc_curve
+        
+        plt.figure(figsize=(10, 8))
+        
+        # 训练集ROC曲线
+        fpr_train, tpr_train, _ = roc_curve(y_train, y_pred_proba_train)
+        auc_train = roc_auc_score(y_train, y_pred_proba_train)
+        
+        # 测试集ROC曲线
+        fpr_test, tpr_test, _ = roc_curve(y_test, y_pred_proba_test)
+        auc_test = roc_auc_score(y_test, y_pred_proba_test)
+        
+        plt.plot(fpr_train, tpr_train, label=f'Training Set (AUC = {auc_train:.3f})', linewidth=2)
+        plt.plot(fpr_test, tpr_test, label=f'Test Set (AUC = {auc_test:.3f})', linewidth=2)
+        
+        # 对角线
+        plt.plot([0, 1], [0, 1], 'k--', linewidth=1)
+        
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate', fontsize=12)
+        plt.ylabel('True Positive Rate', fontsize=12)
+        plt.title(f'{model_name} - ROC Curve', fontsize=14)
+        plt.legend(loc="lower right")
+        plt.grid(True, linestyle='--', alpha=0.6)
+        
+        plot_path = self._get_plot_path(model_name, 'roc_curve')
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        logging.info(f"ROC curve saved to: {plot_path}")
+
+    def _plot_ks_curve(self, y_true: np.ndarray, y_proba: np.ndarray, model_name: str):
+        """绘制测试集的KS曲线图"""
+        try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_proba)
+            ks_values = tpr - fpr
+            ks_stat = max(ks_values)
+            ks_idx = np.argmax(ks_values)
+            ks_threshold = thresholds[ks_idx]
+            
+            plt.figure(figsize=(8, 6))
+            plt.plot(thresholds, ks_values, color='blue', lw=2, label=f'KS曲线 (KS={ks_stat:.3f})')
+            plt.axhline(y=ks_stat, color='red', linestyle='--', linewidth=1, alpha=0.7)
+            plt.plot(ks_threshold, ks_stat, 'o', color='red', markersize=6, label=f'最大KS点')
+            plt.xlabel('thresholds')
+            plt.ylabel('TPR - FPR')
+            plt.title(f'{model_name} - KS Curve')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.xlim([0, 1])
+            
+            plot_path = self._get_plot_path(model_name, 'ks')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            logging.info(f"KS curve saved to: {plot_path}")
+
+        except Exception as e:
+            self.logger.error(f"绘制KS曲线时出错: {str(e)}")
+
+    def _plot_score_distribution(self, y_pred_proba_train: np.ndarray, 
+                                y_pred_proba_test: np.ndarray, model_name: str):
+        """绘制评分分布图（合并折线图版本）"""
+        plt.figure(figsize=(10, 6))
+        
+        # 训练集折线图
+        hist_train, bins_train = np.histogram(y_pred_proba_train, bins=50, range=(0, 1))
+        bin_centers_train = (bins_train[:-1] + bins_train[1:]) / 2
+        plt.plot(bin_centers_train, hist_train, label="Training Set", linewidth=2, marker='o', markersize=4)
+        
+        # 测试集折线图
+        hist_test, bins_test = np.histogram(y_pred_proba_test, bins=50, range=(0, 1))
+        bin_centers_test = (bins_test[:-1] + bins_test[1:]) / 2
+        plt.plot(bin_centers_test, hist_test, label="Test Set", linewidth=2, marker='s', markersize=4)
+        
+        plt.title(f"{model_name} - Score Distribution", fontsize=14)
+        plt.xlabel("Model Score (Probability)", fontsize=12)
+        plt.ylabel("Frequency", fontsize=12)
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.xlim(0, 1)  # 设置x轴范围为0-1
+        plt.ylim(0, max(max(hist_train), max(hist_test)) * 1.1)  # 设置合适的y轴范围
+        
+        plot_path = self._get_plot_path(model_name, 'score_distribution')
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        logging.info(f"Score distribution plot saved to: {plot_path}")
+
+    # 回归任务绘图函数
+    def _plot_regression_score_distribution(self, y_true: np.ndarray, y_pred: np.ndarray,  model_name: str):
+        """绘制测试集的评分分布折线图"""
+        try:
+            # 计算评分（这里使用绝对误差作为评分）
+            scores = np.abs(y_true - y_pred)
+            
+            # 创建评分区间
+            max_score = np.max(scores)
+            bins = np.linspace(0, max_score, 20)
+            
+            # 计算评分分布
+            hist, bin_edges = np.histogram(scores, bins=bins)
+            freq = hist / len(scores) * 100
+            
+            # 使用区间中点作为x轴
+            x_points = bin_edges[:-1] + (bin_edges[1] - bin_edges[0]) / 2
+            
+            plt.figure(figsize=(10, 6))
+            plt.plot(x_points, freq, marker='o', color='green', linewidth=2)
+            plt.xlabel('Score', fontsize=12)
+            plt.ylabel('Frequency', fontsize=12)
+            plt.title(f"{model_name} - Score Distribution", fontsize=14)
+            plt.grid(True, alpha=0.3)
+            
+            plot_path = self._get_plot_path(model_name, 'score_distribution')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            logging.info(f"Regression score distribution plot saved to: {plot_path}")
+        except Exception as e:
+            self.logger.error(f"绘制评分分布图时出错: {str(e)}")
     
-    def plot_classification_results(self, results: Dict[str, Any], save_path: str = None):
-        """绘制分类结果图表"""
-        if 'predictions' not in results or 'y_proba' not in results['predictions']:
-            self.logger.warning("无法绘制分类图表：缺少预测概率")
-            return
-        
-        y_true = results['predictions']['y_true']
-        y_pred = results['predictions']['y_pred']
-        y_proba = results['predictions']['y_proba']
-        
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # 混淆矩阵
-        cm = confusion_matrix(y_true, y_pred)
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[0, 0])
-        axes[0, 0].set_title('混淆矩阵')
-        axes[0, 0].set_xlabel('预测值')
-        axes[0, 0].set_ylabel('真实值')
-        
-        # ROC曲线
-        if y_proba is not None:
-            fpr, tpr, _ = roc_curve(y_true, y_proba)
-            roc_auc = auc(fpr, tpr)
-            
-            axes[0, 1].plot(fpr, tpr, color='darkorange', lw=2, 
-                           label=f'ROC曲线 (AUC = {roc_auc:.2f})')
-            axes[0, 1].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-            axes[0, 1].set_xlim([0.0, 1.0])
-            axes[0, 1].set_ylim([0.0, 1.05])
-            axes[0, 1].set_xlabel('假正率')
-            axes[0, 1].set_ylabel('真正率')
-            axes[0, 1].set_title('ROC曲线')
-            axes[0, 1].legend(loc="lower right")
-        
-        # 预测概率分布
-        axes[1, 0].hist(y_proba, bins=50, alpha=0.7, edgecolor='black')
-        axes[1, 0].set_xlabel('预测概率')
-        axes[1, 0].set_ylabel('频数')
-        axes[1, 0].set_title('预测概率分布')
-        
-        # 特征重要性（如果模型支持）
-        if hasattr(model, 'feature_importances_'):
-            importances = model.feature_importances_
-            indices = np.argsort(importances)[::-1][:20]
-            
-            axes[1, 1].barh(range(len(indices)), importances[indices])
-            axes[1, 1].set_yticks(range(len(indices)))
-            axes[1, 1].set_yticklabels([f'Feature {i}' for i in indices])
-            axes[1, 1].set_xlabel('重要性')
-            axes[1, 1].set_title('特征重要性')
-        
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            self.logger.info(f"分类结果图表已保存至: {save_path}")
-        
-        plt.show()
-    
-    def plot_regression_results(self, results: Dict[str, Any], save_path: str = None):
-        """绘制回归结果图表"""
-        if 'predictions' not in results:
-            self.logger.warning("无法绘制回归图表：缺少预测结果")
-            return
-        
-        y_true = results['predictions']['y_true']
-        y_pred = results['predictions']['y_pred']
-        residuals = results['predictions']['residuals']
-        
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # 实际值 vs 预测值
-        axes[0, 0].scatter(y_true, y_pred, alpha=0.6)
-        axes[0, 0].plot([y_true.min(), y_true.max()], 
-                       [y_true.min(), y_true.max()], 
-                       'r--', lw=2)
-        axes[0, 0].set_xlabel('实际值')
-        axes[0, 0].set_ylabel('预测值')
-        axes[0, 0].set_title('实际值 vs 预测值')
-        
-        # 残差图
-        axes[0, 1].scatter(y_pred, residuals, alpha=0.6)
-        axes[0, 1].axhline(y=0, color='r', linestyle='--')
-        axes[0, 1].set_xlabel('预测值')
-        axes[0, 1].set_ylabel('残差')
-        axes[0, 1].set_title('残差图')
-        
-        # 残差分布
-        axes[1, 0].hist(residuals, bins=50, alpha=0.7, edgecolor='black')
-        axes[1, 0].set_xlabel('残差')
-        axes[1, 0].set_ylabel('频数')
-        axes[1, 0].set_title('残差分布')
-        
-        # 特征重要性（如果模型支持）
-        if hasattr(model, 'feature_importances_'):
-            importances = model.feature_importances_
-            indices = np.argsort(importances)[::-1][:20]
-            
-            axes[1, 1].barh(range(len(indices)), importances[indices])
-            axes[1, 1].set_yticks(range(len(indices)))
-            axes[1, 1].set_yticklabels([f'Feature {i}' for i in indices])
-            axes[1, 1].set_xlabel('重要性')
-            axes[1, 1].set_title('特征重要性')
-        
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            self.logger.info(f"回归结果图表已保存至: {save_path}")
-        
-        plt.show()
+
     
     def save_evaluation_report(self, results: Dict[str, Any], task_type: str, 
                               output_path: str, model_name: str = None):
@@ -303,6 +328,25 @@ class ModelEvaluator:
             json.dump(report, f, ensure_ascii=False, indent=2)
         
         self.logger.info(f"评估报告已保存至: {output_path}")
+    
+    def _get_plot_path(self, model_name: str, plot_type: str) -> Path:
+        """获取图表保存路径"""
+        # 获取配置信息用于路径模板
+        input_data_path = self.config.get('paths.input_data', 'data')
+        input_data_name = Path(input_data_path).stem
+        imbalance_method = self.config.get('modeling.imbalance_method', 'none')
+        
+        # 使用配置中的模板格式化图表输出路径
+        plot_output_template = self.config.get('paths.plot_output', 'plots/{input_data}_{imbalance_method}_{model_name}_{plot_type}_plot.png')
+        plot_filename = plot_output_template.format(
+            input_data=input_data_name,
+            imbalance_method=imbalance_method,
+            model_name=model_name,
+            plot_type=plot_type
+        )
+        base_path = Path(plot_filename).parent
+        base_path.mkdir(parents=True, exist_ok=True)
+        return Path(plot_filename)
 
 
 class ModelComparator:
@@ -320,7 +364,8 @@ class ModelComparator:
             **metrics
         })
     
-    def generate_comparison_report(self) -> pd.DataFrame:
+    def generate_comparison_report(self, task_type: str) -> pd.DataFrame:
+
         """生成比较报告"""
         if not self.results:
             return pd.DataFrame()
@@ -328,46 +373,12 @@ class ModelComparator:
         df = pd.DataFrame(self.results)
         
         # 按任务类型分组排序
-        if 'task_type' in df.columns:
-            # 对于分类任务，按F1或R2排序
-            if 'f1' in df.columns:
-                df = df.sort_values('f1', ascending=False)
-            elif 'r2' in df.columns:
-                df = df.sort_values('r2', ascending=False)
-        
+        if task_type == 'classification':
+            df = df.sort_values('auc', ascending=False)
+        elif task_type == 'regression':
+            df = df.sort_values('r2', ascending=False)
+
         return df
-    
-    def save_comparison_report(self, output_path: str):
-        """保存比较报告"""
-        df = self.generate_comparison_report()
-        if df.empty:
-            return
-        
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        df.to_csv(output_path, index=False, encoding='utf-8')
-        
-        logging.info(f"模型比较报告已保存至: {output_path}")
-
-
-# 工具函数
-def load_model_results(model_path: str) -> Dict[str, Any]:
-    """加载模型结果"""
-    try:
-        model_data = joblib.load(model_path)
-        return model_data
-    except Exception as e:
-        logging.error(f"加载模型失败: {e}")
-        return None
-
-
-def determine_task_type(y: pd.Series) -> str:
-    """自动确定任务类型"""
-    unique_values = len(y.unique())
-    if unique_values <= 10 and y.dtype in ['int64', 'int32', 'object', 'category']:
-        return 'classification'
-    else:
-        return 'regression'
-
 
 if __name__ == "__main__":
     # 示例用法

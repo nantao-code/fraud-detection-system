@@ -1,12 +1,17 @@
 """
-批量训练脚本 - 支持多参数组合和多进程并行执行
+批量训练脚本 - 支持分类与回归双任务的多参数组合和多进程并行执行
 
 使用方法:
-    python batch_training.py --config batch_config.yaml
-    python batch_training.py --config batch_config.yaml --dry-run
-    python batch_training.py --help
+    # 分类任务
+    python batch_training.py --task classification --config batch_config.yaml
+    python batch_training.py --task classification --config batch_config.yaml --dry-run
+    
+    # 回归任务
+    python batch_training.py --task regression --config batch_config.yaml
+    python batch_training.py --task regression --config batch_config.yaml --dry-run
 
 功能特点:
+    - 支持分类与回归任务配置
     - 支持YAML配置文件定义多组参数组合
     - 多进程并行执行，提高训练效率
     - 详细的进度跟踪和结果汇总
@@ -500,8 +505,15 @@ def main():
     parser.add_argument(
         '--config', 
         type=str,
-        default='./batch_config.yaml',
-        help='批量配置文件路径 (默认: batch_config.yaml)'
+        help='批量配置文件路径 (将根据任务类型自动选择)'
+    )
+    
+    parser.add_argument(
+        '--task', 
+        type=str,
+        choices=['classification', 'regression'],
+        default='classification',
+        help='任务类型: classification(分类) 或 regression(回归) (默认: classification)'
     )
     
     parser.add_argument(
@@ -513,8 +525,20 @@ def main():
     args = parser.parse_args()
     
     try:
-        # 初始化批量训练器 - 现在只需要配置文件路径
-        trainer = BatchTrainer(args.config)
+        # 确定配置文件
+        if args.config:
+            config_path = args.config
+        elif args.task == 'regression':
+            config_path = 'batch_config_regression.yaml'
+        else:
+            config_path = 'batch_config_classification.yaml'
+        
+        if not os.path.exists(config_path):
+            logger.error(f"配置文件不存在: {config_path}")
+            return 1
+            
+        # 初始化批量训练器
+        trainer = BatchTrainer(config_path)
         
         # 执行批量训练
         trainer.run_batch_training(dry_run=args.dry_run)

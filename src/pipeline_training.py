@@ -135,8 +135,8 @@ class PipelineTraining:
         # 根据模型类型选择特征处理策略
         model_type_upper = model_type.upper()
         
-        if model_type_upper == 'LR':
-            # 逻辑回归：数值特征需要标准化
+        if model_type_upper in ['LR', 'RIDGE']:
+            # 逻辑回归/岭回归：数值特征需要标准化
             numeric_transformer = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy='median')),
                 ('scaler', StandardScaler())
@@ -150,7 +150,7 @@ class PipelineTraining:
             ])
             logging.info(f"为{model_type}模型使用独热编码处理类别特征")
             
-        elif model_type_upper == 'RF':
+        elif model_type_upper in ['RF', 'RF_REG']:
             # 随机森林：数值特征无需缩放，类别特征使用序号编码
             numeric_transformer = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy='median'))
@@ -165,7 +165,7 @@ class PipelineTraining:
             ])
             logging.info(f"为{model_type}模型使用序号编码处理类别特征")
             
-        elif model_type_upper in ['XGB', 'LGB']:
+        elif model_type_upper in ['XGB', 'LGB', 'XGB_REG', 'LGB_REG']:
             # XGBoost/LightGBM：数值特征无需缺失值填充与缩放，使用专用CategoricalConverter
             numeric_transformer = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy='median'))
@@ -219,7 +219,7 @@ class PipelineTraining:
             模型实例和参数网格的元组
         """
         # 从配置获取模型类型
-        model_type = model_name or self.config.get('modeling.model_type', 'LR')
+        model_type = model_name or self.config.get('modeling.model_type', 'unknown_model')
         
         # 使用ModelFactory创建模型和参数网格，传入完整配置
         model, param_grid = ModelFactory.create_model(model_type, self.config)
@@ -334,6 +334,10 @@ class PipelineTraining:
         """
         import warnings
         warnings.filterwarnings('ignore')
+
+        # 从配置文件获取任务类型
+        task_type = self.config.get('modeling.task_type', 'classification')
+        logging.info(f"配置文件指定任务类型: {task_type}")
         
         model_type = model_name or self.config.get('modeling.model_type', 'LR')
         logging.info(f"开始训练{model_type}模型...")
@@ -350,16 +354,20 @@ class PipelineTraining:
         train_data = (X_train, y_train) # 默认使用全部训练数据
         
         # 检查是否需要早停机制
-        needs_early_stopping = model_type.upper() in ['XGB', 'LGB']
+        needs_early_stopping = model_type.upper() in ['XGB', 'LGB', 'XGB_REG', 'LGB_REG']
         
         if needs_early_stopping:
             logging.info(f"为 {model_type} 创建早停验证集...")
             validation_split_ratio = self.config.get('modeling.validation_split_ratio', 0.1)
+            
+            # 根据任务类型决定是否使用分层抽样
+            stratify = y_train if task_type == 'classification' else None
+            
             X_train_main, X_val, y_train_main, y_val = train_test_split(
                 X_train, y_train, 
                 test_size=validation_split_ratio, 
                 random_state=self.config.get('modeling.random_state', 42),
-                stratify=y_train
+                stratify=stratify
             )
             train_data = (X_train_main, y_train_main) # 更新训练数据为分割后的主训练集
             
@@ -375,19 +383,28 @@ class PipelineTraining:
                     )]
                 }
 
-        # 根据是否调参，选择训练实体（searcher或pipeline本身）
+        # 根据任务类型选择交叉验证器和评估指标
         if use_hyperparameter_tuning and param_grid:
             logging.info("启用超参数优化...")
-            from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
+            from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, KFold
             
             # 为参数网格添加前缀
             prefixed_param_grid = {}
             for param_name, param_values in param_grid.items():
                 prefixed_param_grid[f'classifier__{param_name}'] = param_values
             
-            cv = StratifiedKFold(n_splits=self.config.get('modeling.n_splits', 5), 
-                               shuffle=True, 
-                               random_state=self.config.get('modeling.random_state', 42))
+            # 根据任务类型选择交叉验证器
+            if task_type == 'classification':
+                cv = StratifiedKFold(n_splits=self.config.get('modeling.n_splits', 5), 
+                                   shuffle=True, 
+                                   random_state=self.config.get('modeling.random_state', 42))
+                scoring = self.config.get('feature_engineering.primary_metric_classification', 'roc_auc')
+            else:  # regression
+                cv = KFold(n_splits=self.config.get('modeling.n_splits', 5), 
+                          shuffle=True, 
+                          random_state=self.config.get('modeling.random_state', 42))
+                scoring = self.config.get('feature_engineering.primary_metric_regression', 'neg_root_mean_squared_error')
+            
             n_iter_search = self.config.get('modeling.n_iter', 20)
             
             searcher = RandomizedSearchCV(
@@ -395,7 +412,7 @@ class PipelineTraining:
                 param_distributions=prefixed_param_grid,
                 n_iter=n_iter_search,
                 cv=cv,
-                scoring=self.config.get('modeling.primary_metric', 'roc_auc'),
+                scoring=scoring,
                 n_jobs=-1,
                 random_state=self.config.get('modeling.random_state', 42),
                 refit=True
@@ -428,7 +445,8 @@ class PipelineTraining:
         # 评估模型
         logging.info("开始模型评估...")
         evaluation_results = self.evaluator.evaluate_model(
-            final_pipeline, X_train, y_train, X_test, y_test, model_type
+            final_pipeline, X_train, y_train, X_test, y_test, model_type, task_type
+
         )
         
         return final_pipeline, evaluation_results, best_params
@@ -489,8 +507,11 @@ class PipelineTraining:
             from data_loader import DataSplitter
             data_splitter = DataSplitter(self.config)
             
+            # 从配置文件获取任务类型
+            task_type = self.config.get('modeling.task_type', 'classification')
+            
             X_train, X_test, y_train, y_test = data_splitter.split_data(
-                all_df, feature_cols, target_col
+                all_df, feature_cols, target_col, task_type
             )
             logging.info(f"训练集形状: X_train={X_train.shape}, y_train={y_train.shape}")
             logging.info(f"测试集形状: X_test={X_test.shape}, y_test={y_test.shape}")
@@ -570,12 +591,26 @@ class PipelineTraining:
                 
                 logging.info("=" * 80)
                 logging.info(f"模型 {model_type} 训练完成")
-                logging.info(f"  AUC: {evaluation_results.get('test_metrics', {}).get('auc', 'N/A')}")
-                logging.info(f"  KS: {evaluation_results.get('test_metrics', {}).get('ks', 'N/A')}")
-                logging.info(f"  F1: {evaluation_results.get('test_metrics', {}).get('f1', 'N/A')}")
-                logging.info(f"  Precision: {evaluation_results.get('test_metrics', {}).get('precision', 'N/A')}")
-                logging.info(f"  Recall: {evaluation_results.get('test_metrics', {}).get('recall', 'N/A')}")
-                logging.info(f"  Accuracy: {evaluation_results.get('test_metrics', {}).get('accuracy', 'N/A')}")
+                
+                test_metrics = evaluation_results.get('test_metrics', {})
+                task_type = evaluation_results.get('task_type', 'unknown')
+                
+                if task_type == 'classification':
+                    logging.info(f"  AUC: {test_metrics.get('auc', 'N/A')}")
+                    logging.info(f"  KS: {test_metrics.get('ks', 'N/A')}")
+                    logging.info(f"  F1: {test_metrics.get('f1', 'N/A')}")
+                    logging.info(f"  Precision: {test_metrics.get('precision', 'N/A')}")
+                    logging.info(f"  Recall: {test_metrics.get('recall', 'N/A')}")
+                    logging.info(f"  Accuracy: {test_metrics.get('accuracy', 'N/A')}")
+                elif task_type == 'regression':
+                    logging.info(f"  R²: {test_metrics.get('r2', 'N/A')}")
+                    logging.info(f"  RMSE: {test_metrics.get('rmse', 'N/A')}")
+                    logging.info(f"  MAE: {test_metrics.get('mae', 'N/A')}")
+                    logging.info(f"  MSE: {test_metrics.get('mse', 'N/A')}")
+                else:
+                    logging.info(f"  ✓ {model_name}: {test_metrics}"
+                           f"耗时={result.get('training_time', 0):.2f}s")
+                
                 logging.info(f"  Best_params: {best_params}")
                 logging.info("=" * 80)
             else:
@@ -607,6 +642,7 @@ class PipelineTraining:
         # 从配置获取基础信息
         imbalance_method = self.config.get('modeling.imbalance_method', 'none')
         data_name = self.config.get('paths.input_data', 'data').split('/')[-1].replace('.csv', '')
+        task_type = self.config.get('modeling.task_type', 'classification')
         
         # 获取模型列表 - 支持多种配置方式
         model_names = self.config.get('modeling.models', [])
@@ -683,7 +719,7 @@ class PipelineTraining:
         self._generate_batch_report(results)
         
         # 生成模型比较报告
-        self._generate_comparison_report(comparator, results)
+        self._generate_comparison_report(comparator, results, task_type)
         
         return results
     
@@ -706,11 +742,20 @@ class PipelineTraining:
                 model_name = result['model']
                 metrics = result.get('metrics', {})
                 test_metrics = metrics.get('test_metrics', {})
-                logging.info(f"  ✓ {model_name}: "
-                           f"AUC={test_metrics.get('auc', 'N/A'):.4f}, "
-                           f"F1={test_metrics.get('f1', 'N/A'):.4f}, "
-                           f"KS={test_metrics.get('ks', 'N/A'):.4f}, "
-                           f"耗时={result.get('training_time', 0):.2f}s")
+                task_type = metrics.get('task_type', 'classification')
+                
+                if task_type == 'classification':
+                    logging.info(f"  ✓ {model_name}: "
+                               f"AUC={test_metrics.get('auc', 'N/A')}, "
+                               f"F1={test_metrics.get('f1', 'N/A')}"
+                               f"KS={test_metrics.get('ks', 'N/A')}")
+                elif task_type == 'regression':
+                    logging.info(f"  ✓ {model_name}: "
+                               f"R²={test_metrics.get('r2', 'N/A')}, "
+                               f"RMSE={test_metrics.get('rmse', 'N/A')}")
+                else:
+                    logging.info(f"  ✓ {model_name}: {test_metrics}"
+                           f"耗时={result.get('training_time', 0)}s")
         
         if failed:
             logging.warning("\n训练失败的模型:")
@@ -753,14 +798,16 @@ class PipelineTraining:
         logging.info(f"\n批量训练结果已保存到: {batch_results_path}")
         logging.info("=" * 80)
 
-    def _generate_comparison_report(self, comparator: ModelComparator, results: List[Dict[str, Any]]):
+    def _generate_comparison_report(self, comparator: ModelComparator, results: List[Dict[str, Any]], task_type: str):
+
         """生成模型比较报告"""
         imbalance_method = self.config.get('modeling.imbalance_method', 'none')
         data_name = self.config.get('paths.input_data', 'data').split('/')[-1].replace('.csv', '')
         
         try:
             # 生成比较报告
-            comparison_df = comparator.generate_comparison_report()
+            comparison_df = comparator.generate_comparison_report(task_type)
+
             
             if comparison_df.empty:
                 logging.warning("没有可用的模型结果进行比较")
@@ -911,6 +958,9 @@ class PipelineTraining:
         except Exception as e:
             logging.error(f"保存{model_name} PMML文件时出错: {str(e)}")
             logging.error(traceback.format_exc())
+
+        if results is not None:
+            self._save_results(model_name, results, model_path)
 
         return str(model_path)
     

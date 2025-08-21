@@ -1,30 +1,24 @@
-# 回归任务配置文件
-# 用于欺诈损失金额预测等回归任务
+# 分类任务配置文件
+# 用于易受诈人群识别等分类任务
 
 feature_engineering:
   corr_threshold: 0.8
-  create_interaction_features: True
-  create_polynomial_features: True
-  create_statistical_features: True
+  create_interaction_features: false
+  create_polynomial_features: false
+  create_statistical_features: false
   early_stopping_rounds: 50
-  eval_metric: rmse
+  eval_metric: logloss
   iv_threshold: 0.1
   missing_rate_threshold: 0.3
   polynomial_degree: 2
-  # 分类任务指标（保留结构完整性）
+  # 分类任务指标
   primary_metric_classification: roc_auc
   scoring_metrics_classification:
   - roc_auc
   - ks
-  # 回归任务指标
-  primary_metric_regression: neg_root_mean_squared_error
-  scoring_metrics_regression:
-  - neg_root_mean_squared_error
-  - neg_mean_absolute_error
-  - r2
   target_column: label
   unique_value_threshold: 10
-  use_advanced_engineering: true
+  use_advanced_engineering: false
   use_category_feature: true
   use_corr_selection: true
   use_importance_selection: true
@@ -38,18 +32,17 @@ logging:
 
 modeling:
   early_stopping_rounds: 100
-  handle_imbalance: false
-  imbalance_method: none
-  model_type: RF_REG
+  handle_imbalance: true
+  imbalance_method: smote
+  model_type: RF
   # 任务类型: classification 或 regression
-  task_type: regression
-  # 分类模型列表（回归任务中不使用）
+  task_type: classification
   models:
-  - RIDGE
-  - XGB_REG
-  - RF_REG
-  - LGB_REG
-  n_iter: 10
+  - XGB
+  - RF
+  - LR
+  - LGB
+  n_iter: 5
   n_splits: 5
   random_state: 42
   test_size: 0.3
@@ -58,7 +51,7 @@ modeling:
   validation_split_ratio: 0.1
   
   # 各模型的默认参数配置
-  # 分类模型（保留结构完整性）
+  # 分类模型
   logistic_regression:
     C: 1.0
     penalty: "l2"
@@ -93,38 +86,6 @@ modeling:
     lambda_l1: 0.0
     lambda_l2: 0.0
     min_split_gain: 0.0
-  
-  # 回归模型
-  ridge_regression:
-    alpha: 1.0
-    solver: "auto"
-    max_iter: 1000
-    tol: 0.0001
-  
-  xgboost_regression:
-    n_estimators: 1000
-    learning_rate: 0.1
-    max_depth: 6
-    eval_metric: "rmse"
-  
-  random_forest_regression:
-    n_estimators: 100
-    max_depth: null
-    min_samples_split: 2
-    min_samples_leaf: 1
-  
-  lightgbm_regression:
-    n_estimators: 1000
-    learning_rate: 0.1
-    max_depth: -1
-    num_leaves: 31
-    feature_fraction: 1.0
-    bagging_fraction: 1.0
-    bagging_freq: 0
-    min_child_samples: 20
-    lambda_l1: 0.0
-    lambda_l2: 0.0
-    min_split_gain: 0.0
 
 monitoring:
   alerts:
@@ -136,14 +97,14 @@ monitoring:
     sample_size: 1000
     threshold: 0.05
   performance_thresholds:
-    # 分类任务性能阈值（保留结构完整性）
+    # 分类任务性能阈值
     classification:
       accuracy: 0.75
       auc: 0.8
       precision: 0.7
       recall: 0.65
       ks: 0.3
-    # 回归任务性能阈值
+    # 回归任务性能阈值（保留结构完整性）
     regression:
       mse: 0.1
       rmse: 0.3
@@ -153,11 +114,11 @@ monitoring:
 
 paths:
   data_path: data
-  input_data: data/data_resression.csv
-  model_output: models/{input_data}_{imbalance_method}_{model_name}_regression_model.joblib
+  input_data: data/test_creditcard.csv
+  model_output: models/{input_data}_{imbalance_method}_{model_name}_classification_model.joblib
   pipeline_model_output: models/pipeline_{input_data}_{imbalance_method}_{model_name}.joblib
   pipeline_results_output: models/pipeline_{input_data}_{imbalance_method}_{model_name}_results.json
-  plot_output: plots/{input_data}_{imbalance_method}_{model_name}_{plot_type}_regression_plot.png
+  plot_output: plots/{input_data}_{imbalance_method}_{model_name}_{plot_type}_plot.png
   final_features_output: features/{input_data}_{imbalance_method}_{model_name}_final_features.json
   comparison_output: models/comparison_{data_name}_{imbalance_method}_{timestamp}.csv
   pmml_model_output: pmmls/pipeline_{input_data}_{imbalance_method}_{model_name}.pmml

@@ -12,7 +12,7 @@
 __version__ = "2.0.0"
 __author__ = "AI Assistant"
 
-from .model_training import TrainingPipeline
+from .pipeline_training import PipelineTraining
 from .unified_config import UnifiedConfig
 from .data_loader import DataLoader
 from .feature_engineering import FeatureEngineeringPipeline
@@ -20,7 +20,7 @@ from .model_factory import ModelFactory
 from .evaluator import ModelEvaluator
 
 __all__ = [
-    'TrainingPipeline',
+    'PipelineTraining',
     'UnifiedConfig', 
     'DataLoader',
     'FeatureEngineeringPipeline',

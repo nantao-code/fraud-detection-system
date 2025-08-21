@@ -36,6 +36,8 @@ modeling:
   handle_imbalance: true
   imbalance_method: smote
   model_type: RF
+  # 任务类型: classification 或 regression
+  task_type: classification
   models:
   - XGB
   - RF

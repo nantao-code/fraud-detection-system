@@ -126,6 +126,39 @@ class FeatureSelector:
             return data.columns.tolist()
     
     @staticmethod
+    def select_by_f_regression(data: pd.DataFrame, target: pd.Series, k: int = 20) -> List[str]:
+        """基于F检验选择与回归目标最相关的K个特征"""
+        from sklearn.feature_selection import f_regression, SelectKBest
+        
+        try:
+            # 确保k不超过特征数量
+            k = min(k, data.shape[1])
+            
+            selector = SelectKBest(score_func=f_regression, k=k)
+            selector.fit(data, target)
+            selected_indices = selector.get_support(indices=True)
+            return data.columns[selected_indices].tolist()
+        except Exception as e:
+            logging.warning(f"F回归特征选择失败: {e}")
+            return data.columns.tolist()
+    
+    @staticmethod
+    def select_by_f_classif(data: pd.DataFrame, target: pd.Series, k: int = 20) -> List[str]:
+        """基于F检验选择与分类目标最相关的K个特征"""
+        from sklearn.feature_selection import f_classif, SelectKBest
+        
+        try:
+            k = min(k, data.shape[1])
+            
+            selector = SelectKBest(score_func=f_classif, k=k)
+            selector.fit(data, target)
+            selected_indices = selector.get_support(indices=True)
+            return data.columns[selected_indices].tolist()
+        except Exception as e:
+            logging.warning(f"F分类特征选择失败: {e}")
+            return data.columns.tolist()
+    
+    @staticmethod
     def _calculate_iv(feature: pd.Series, target: pd.Series) -> float:
         """计算IV值（仅分类任务）"""
         df = pd.DataFrame({'feature': feature, 'target': target})
@@ -211,23 +244,17 @@ class FeatureEngineeringPipeline(BaseEstimator, TransformerMixin):
             'missing_rate_threshold': self.config.get('feature_engineering.missing_rate_threshold', 0.3),
             'iv_threshold': self.config.get('feature_engineering.iv_threshold', 0.1),
             'corr_threshold': self.config.get('feature_engineering.corr_threshold', 0.8),
+            'use_f_regression_selection': self.config.get('feature_engineering.use_f_regression_selection', False),
+            'f_regression_k': self.config.get('feature_engineering.f_regression_k', 20),
         }
-    
-    def _determine_task_type(self, y: pd.Series) -> str:
-        """自动确定任务类型"""
-        unique_values = len(y.unique())
-        if unique_values <= 10 and y.dtype in ['int64', 'int32', 'object', 'category']:
-            return 'classification'
-        else:
-            return 'regression'
     
     def fit(self, X: pd.DataFrame, y: pd.Series):
         """在训练数据上学习所有特征工程规则"""
         logging.info("开始拟合特征工程管道...")
         
-        # 确定任务类型
-        self.task_type_ = self._determine_task_type(y)
-        logging.info(f"检测到任务类型: {self.task_type_}")
+        # 从配置文件获取任务类型
+        self.task_type_ = self.config.get('modeling.task_type', 'classification')
+        logging.info(f"配置文件指定任务类型: {self.task_type_}")
         
         X_processed = X.copy()
         
@@ -293,7 +320,7 @@ class FeatureEngineeringPipeline(BaseEstimator, TransformerMixin):
         
         # 2.3 基于相关性筛选
         corr_threshold = self.fe_config['corr_threshold']
-        corr_cols = FeatureSelector.select_by_correlation(X_processed, y, corr_threshold)
+        corr_cols = FeatureSelector.select_by_correlation(X_processed, corr_threshold)
         X_processed = X_processed.drop(columns=corr_cols)
         
         # 2.4 基于方差筛选
@@ -323,6 +350,18 @@ class FeatureEngineeringPipeline(BaseEstimator, TransformerMixin):
                 self.fe_config['importance_model'], self.task_type_
             )
             X_processed = X_processed[importance_features]
+        
+        # 2.8 基于特征-目标相关性选择
+        if self.fe_config['use_f_regression_selection']:
+            if self.task_type_ == 'regression':
+                f_features = FeatureSelector.select_by_f_regression(
+                    X_processed, y, self.fe_config['f_regression_k']
+                )
+            else:
+                f_features = FeatureSelector.select_by_f_classif(
+                    X_processed, y, self.fe_config['f_regression_k']
+                )
+            X_processed = X_processed[f_features]
         
         logging.info(f"特征选择后特征数量: {len(X_processed.columns)}")
         
@@ -449,22 +488,30 @@ class FeatureGenerator:
         """
         data_copy = data.copy()
         
+        # 只选择数值列进行交互特征创建
+        numeric_cols = data_copy.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) < 2:  # 需要至少2个数值列才能创建交互特征
+            return pd.DataFrame(index=data_copy.index)  # 返回空的DataFrame但保持索引一致
+            
+        # 只使用数值列创建交互特征
+        numeric_data = data_copy[numeric_cols]
+        result_df = pd.DataFrame(index=data_copy.index)  # 预创建结果DataFrame
+        
         if interaction_pairs is None:
             # 创建所有可能的二阶交互
-            cols = data.columns
-            for i in range(len(cols)):
-                for j in range(i+1, len(cols)):
-                    col1, col2 = cols[i], cols[j]
+            for i in range(len(numeric_cols)):
+                for j in range(i+1, len(numeric_cols)):
+                    col1, col2 = numeric_cols[i], numeric_cols[j]
                     interaction_name = f"{col1}_x_{col2}"
-                    data_copy[interaction_name] = data[col1] * data[col2]
+                    result_df[interaction_name] = numeric_data[col1] * numeric_data[col2]
         else:
-            # 创建指定的交互特征
+            # 创建指定的交互特征，只处理数值列
             for col1, col2 in interaction_pairs:
-                if col1 in data.columns and col2 in data.columns:
+                if col1 in numeric_cols and col2 in numeric_cols:
                     interaction_name = f"{col1}_x_{col2}"
-                    data_copy[interaction_name] = data[col1] * data[col2]
+                    result_df[interaction_name] = numeric_data[col1] * numeric_data[col2]
         
-        return data_copy
+        return result_df
     
     @staticmethod
     def create_statistical_features(data: pd.DataFrame, group_cols: List[str] = None) -> pd.DataFrame:
@@ -579,9 +626,6 @@ class FeatureGenerator:
         return data_copy
 
 
-# 旧的DataPreprocessor类已被重构为新的DataPreprocessor类，符合scikit-learn规范
-
-
 class FeatureReducer:
     """特征降维器"""
     
@@ -639,16 +683,17 @@ class DataPreprocessor(BaseEstimator, TransformerMixin):
     
     def __init__(self, missing_strategy: str = 'median', outlier_method: str = 'iqr', 
                  outlier_threshold: float = 1.5, transform_method: str = 'yeo-johnson',
-                 scale_method: str = 'standard'):
+                 scale_method: str = 'standard', encoding_method: str = 'ordinal'):
         self.missing_strategy = missing_strategy
         self.outlier_method = outlier_method
         self.outlier_threshold = outlier_threshold
         self.transform_method = transform_method
         self.scale_method = scale_method
+        self.encoding_method = encoding_method  # 新增：编码策略选择
         
         # 存储训练阶段学到的转换器
         self.imputers_ = {}
-        self.encoders_ = None  # 使用OrdinalEncoder替代LabelEncoder
+        self.encoders_ = None
         self.scalers_ = {}
         self.outlier_bounds_ = {}
         self.transformers_ = {}
@@ -668,20 +713,28 @@ class DataPreprocessor(BaseEstimator, TransformerMixin):
             self.imputers_['numeric'] = SimpleImputer(strategy=self.missing_strategy)
             self.imputers_['numeric'].fit(X_copy[numeric_cols])
         
+        # 3. 学习类别编码规则（根据encoding_method选择编码器）
         if len(self.categorical_cols_) > 0:
             from sklearn.impute import SimpleImputer
-            self.imputers_['categorical'] = SimpleImputer(strategy='most_frequent')
-            self.imputers_['categorical'].fit(X_copy[self.categorical_cols_])
-        
-        # 3. 学习类别编码规则（使用OrdinalEncoder）
-        if len(self.categorical_cols_) > 0:
-            from sklearn.preprocessing import OrdinalEncoder
-            # 先填充缺失值，再学习编码规则
+            from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder
+            
+            # 先填充缺失值
             X_cat_imputed = self.imputers_['categorical'].transform(X_copy[self.categorical_cols_])
-            self.encoders_ = OrdinalEncoder(
-                handle_unknown='use_encoded_value', 
-                unknown_value=-1  # 未知类别编码为-1
-            )
+            
+            if self.encoding_method == 'onehot':
+                # 独热编码
+                self.encoders_ = OneHotEncoder(
+                    handle_unknown='ignore',
+                    sparse_output=False,
+                    drop='first'  # 避免虚拟变量陷阱
+                )
+            else:
+                # 默认使用序号编码
+                self.encoders_ = OrdinalEncoder(
+                    handle_unknown='use_encoded_value', 
+                    unknown_value=-1  # 未知类别编码为-1
+                )
+            
             self.encoders_.fit(X_cat_imputed)
         
         # 4. 学习异常值处理边界
@@ -728,13 +781,22 @@ class DataPreprocessor(BaseEstimator, TransformerMixin):
         if 'numeric' in self.imputers_ and len(numeric_cols) > 0:
             X_copy[numeric_cols] = self.imputers_['numeric'].transform(X_copy[numeric_cols])
         
-        if 'categorical' in self.imputers_ and len(self.categorical_cols_) > 0:
-            X_copy[self.categorical_cols_] = self.imputers_['categorical'].transform(X_copy[self.categorical_cols_])
-        
-        # 2. 应用类别编码（使用OrdinalEncoder）
+        # 2. 应用类别编码（根据编码策略）
         if self.encoders_ is not None and len(self.categorical_cols_) > 0:
-            # 应用编码，未知类别会自动编码为-1
-            X_copy[self.categorical_cols_] = self.encoders_.transform(X_copy[self.categorical_cols_])
+            X_cat_imputed = self.imputers_['categorical'].transform(X_copy[self.categorical_cols_])
+            
+            if self.encoding_method == 'onehot':
+                # 独热编码会生成新的列名
+                encoded_features = self.encoders_.transform(X_cat_imputed)
+                feature_names = self.encoders_.get_feature_names_out(self.categorical_cols_)
+                encoded_df = pd.DataFrame(encoded_features, columns=feature_names, index=X_copy.index)
+                
+                # 删除原始类别列，添加编码后的列
+                X_copy = X_copy.drop(columns=self.categorical_cols_)
+                X_copy = pd.concat([X_copy, encoded_df], axis=1)
+            else:
+                # 序号编码保持原始列名
+                X_copy[self.categorical_cols_] = self.encoders_.transform(X_cat_imputed)
         
         # 3. 应用异常值处理
         for col, bounds in self.outlier_bounds_.items():

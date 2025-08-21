@@ -51,13 +51,7 @@ class ModelTraining:
         )
         self.logger = logging.getLogger(__name__)
     
-    def _determine_task_type(self, y: pd.Series) -> str:
-        """自动确定任务类型"""
-        unique_values = len(y.unique())
-        if unique_values <= 10 and y.dtype in ['int64', 'int32', 'object', 'category']:
-            return 'classification'
-        else:
-            return 'regression'
+
     
     def _get_regression_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
         """计算回归评估指标"""
@@ -132,9 +126,9 @@ class ModelTraining:
             self.logger.info(f"训练集形状: X_train={X_train.shape}, y_train={y_train.shape}")
             self.logger.info(f"测试集形状: X_test={X_test.shape}, y_test={y_test.shape}")
             
-            # 确定任务类型
-            task_type = self._determine_task_type(y_train)
-            self.logger.info(f"检测到任务类型: {task_type}")
+            # 获取任务类型（从配置文件获取）
+            task_type = self.config.get('modeling.task_type', 'classification')
+            self.logger.info(f"配置文件指定任务类型: {task_type}")
             
             if task_type == 'classification':
                 self.logger.info(f"训练集类别分布: {dict(y_train.value_counts())}")
@@ -218,7 +212,7 @@ class ModelTraining:
         test_size = self.config.get('modeling.test_size', 0.2)
         random_state = self.config.get('modeling.random_state', 42)
         
-        task_type = self._determine_task_type(y)
+        task_type = self.config.get('modeling.task_type', 'classification')
         
         if task_type == 'classification':
             X_train, X_test, y_train, y_test = train_test_split(
