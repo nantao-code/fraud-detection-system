@@ -1,0 +1,7 @@
+data_name,imbalance_method,model_name,task_type,file_path,accuracy,precision,recall,f1,auc,ks
+test_creditcard,random_over,RF,classification,models\pipeline_test_creditcard_random_over_RF_results.json,0.9209726443768997,0.921248734871397,0.9209726443768997,0.9207993647553123,0.9689413170076154,0.8648648648648649
+test_creditcard,random_over,XGB,classification,models\pipeline_test_creditcard_random_over_XGB_results.json,0.9027355623100304,0.9029189358474204,0.9027355623100304,0.9025222950834614,0.9548305211288637,0.8194340749589368
+test_creditcard,smote,RF,classification,models\pipeline_test_creditcard_smote_RF_results.json,0.9240121580547113,0.925438316730637,0.9240121580547113,0.9236661901745409,0.9548305211288637,0.8550470359862625
+test_creditcard,random_over,LR,classification,models\pipeline_test_creditcard_random_over_LR_results.json,0.8875379939209727,0.891593977521736,0.8875379939209727,0.8864851644677375,0.951956099746155,0.7973346274451247
+test_creditcard,smote,XGB,classification,models\pipeline_test_creditcard_smote_XGB_results.json,0.8905775075987842,0.8913743449731554,0.8905775075987842,0.8901352593871468,0.945385993728535,0.8187994624458713
+test_creditcard,smote,LR,classification,models\pipeline_test_creditcard_smote_LR_results.json,0.8723404255319149,0.8775743117007136,0.8723404255319149,0.8708723210125795,0.9026056443183516,0.7395848887561595

@@ -217,7 +217,7 @@ class ModelEvaluator:
         logging.info(f"ROC curve saved to: {plot_path}")
 
     def _plot_ks_curve(self, y_true: np.ndarray, y_proba: np.ndarray, model_name: str):
-        """绘制测试集的KS曲线图"""
+        """绘制测试集的KS曲线图，包含TPR、FPR和KS曲线"""
         try:
             fpr, tpr, thresholds = roc_curve(y_true, y_proba)
             ks_values = tpr - fpr
@@ -225,16 +225,32 @@ class ModelEvaluator:
             ks_idx = np.argmax(ks_values)
             ks_threshold = thresholds[ks_idx]
             
-            plt.figure(figsize=(8, 6))
-            plt.plot(thresholds, ks_values, color='blue', lw=2, label=f'KS曲线 (KS={ks_stat:.3f})')
-            plt.axhline(y=ks_stat, color='red', linestyle='--', linewidth=1, alpha=0.7)
-            plt.plot(ks_threshold, ks_stat, 'o', color='red', markersize=6, label=f'最大KS点')
-            plt.xlabel('thresholds')
-            plt.ylabel('TPR - FPR')
-            plt.title(f'{model_name} - KS Curve')
-            plt.legend()
+            plt.figure(figsize=(12, 8))
+            
+            # 绘制TPR曲线
+            plt.plot(thresholds, tpr, color='green', lw=2, label='TPR (True Positive Rate)', marker='o', markersize=3)
+            
+            # 绘制FPR曲线
+            plt.plot(thresholds, fpr, color='red', lw=2, label='FPR (False Positive Rate)', marker='s', markersize=3)
+            
+            # 绘制KS曲线 (TPR - FPR)
+            plt.plot(thresholds, ks_values, color='blue', lw=2, label=f'KS = TPR - FPR (max KS={ks_stat:.3f})', marker='^', markersize=3)
+            
+            # 标注最大KS值点
+            plt.axhline(y=ks_stat, color='purple', linestyle='--', linewidth=1, alpha=0.7)
+            plt.plot(ks_threshold, ks_stat, 'o', color='purple', markersize=8, 
+                    label=f'Max KS Point (Threshold={ks_threshold:.3f}, KS={ks_stat:.3f})')
+            
+            # 添加垂直线到最大KS点
+            plt.axvline(x=ks_threshold, color='gray', linestyle=':', linewidth=1, alpha=0.5)
+            
+            plt.xlabel('Threshold', fontsize=12)
+            plt.ylabel('Rate Value', fontsize=12)
+            plt.title(f'{model_name} - TPR, FPR and KS Curve Analysis', fontsize=14)
+            plt.legend(loc='upper right', fontsize=10)
             plt.grid(True, alpha=0.3)
             plt.xlim([0, 1])
+            plt.ylim([0, 1.05])
             
             plot_path = self._get_plot_path(model_name, 'ks')
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
