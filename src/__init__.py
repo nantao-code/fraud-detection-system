@@ -15,7 +15,7 @@ __author__ = "AI Assistant"
 from .pipeline_training import PipelineTraining
 from .unified_config import UnifiedConfig
 from .data_loader import DataLoader
-from .feature_engineering import FeatureEngineeringPipeline
+from .feature_engineering import DataPreprocessor, FeatureSelectorPipeline, FeatureGeneratorPipeline
 from .model_factory import ModelFactory
 from .evaluator import ModelEvaluator
 
@@ -23,7 +23,9 @@ __all__ = [
     'PipelineTraining',
     'UnifiedConfig', 
     'DataLoader',
-    'FeatureEngineeringPipeline',
+    'DataPreprocessor', 
+    'FeatureSelectorPipeline',
+    'FeatureGeneratorPipeline',
     'ModelFactory',
     'ModelEvaluator'
 ]

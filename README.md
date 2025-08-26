@@ -123,6 +123,64 @@ regression_models: ["RIDGE", "XGB_REG", "RF_REG", "LGB_REG"]  # 回归模型
 
 ## 🛠️ 高级用法
 
+### 新的特征工程Pipeline
+
+项目新增了符合sklearn规范的特征工程Pipeline类：
+
+#### 1. 特征选择Pipeline
+```python
+from src.feature_engineering import FeatureSelectorPipeline
+
+# 创建特征选择器
+selector = FeatureSelectorPipeline(
+    task_type='classification',
+    selection_methods=['missing_rate', 'variance', 'correlation', 'importance'],
+    missing_rate_threshold=0.3,
+    importance_threshold=0.01
+)
+
+# 训练并应用
+selector.fit(X_train, y_train)
+X_selected = selector.transform(X_test)
+```
+
+#### 2. 特征生成Pipeline
+```python
+from src.feature_engineering import FeatureGeneratorPipeline
+
+# 创建特征生成器
+generator = FeatureGeneratorPipeline(
+    generate_polynomial=True,
+    polynomial_degree=2,
+    generate_interaction=True,
+    generate_binning=True,
+    bins_config={'age': 5, 'income': 4}
+)
+
+# 生成新特征
+X_generated = generator.transform(X)
+```
+
+#### 3. 完整工作流程
+```python
+from sklearn.pipeline import Pipeline
+
+full_pipeline = Pipeline([
+    ('generator', FeatureGeneratorPipeline(
+        generate_polynomial=True,
+        generate_interaction=True,
+        generate_binning=True
+    )),
+    ('selector', FeatureSelectorPipeline(
+        task_type='classification',
+        selection_methods=['variance', 'importance']
+    )),
+    ('classifier', RandomForestClassifier())
+])
+
+full_pipeline.fit(X_train, y_train)
+```
+
 ### 自定义特征工程
 
 ```python

@@ -3,7 +3,7 @@
 # 通过base_config引用基础配置，仅覆盖需要修改的特定配置
 
 # 引用基础配置文件
-base_config: "config.yaml"
+base_config: "config_classification.yaml"
 
 # 批处理设置
 batch:

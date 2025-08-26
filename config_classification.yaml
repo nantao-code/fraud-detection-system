@@ -2,28 +2,87 @@
 # 用于易受诈人群识别等分类任务
 
 feature_engineering:
-  corr_threshold: 0.8
-  create_interaction_features: false
-  create_polynomial_features: false
-  create_statistical_features: false
-  early_stopping_rounds: 50
-  eval_metric: logloss
-  iv_threshold: 0.1
-  missing_rate_threshold: 0.3
-  polynomial_degree: 2
+  # 数据预处理配置
+  preprocessing:
+    # 缺失值处理策略：mean/median/most_frequent/constant
+    missing_strategy: median  # 缺失值填充策略
+    # 异常值处理方法：iqr/zscore/iso_forest/lof/none
+    outlier_method: iqr  # 异常值检测方法
+    outlier_threshold: 1.5  # 异常值检测阈值（IQR倍数）
+    # 数据变换方法：yeo-johnson/box-cox/quantile/log/none
+    transform_method: yeo-johnson  # 数据分布变换方法
+    # 标准化方法：standard/minmax/robust/none
+    scale_method: standard  # 特征标准化方法
+    # 编码方法：ordinal/onehot/target/none
+    encoding_method: ordinal  # 类别特征编码方法
+    # 类别特征阈值：当唯一值数量小于此阈值时视为类别特征
+    categorical_threshold: 10  # 类别特征识别阈值
+    # 数值特征阈值：当唯一值数量大于此阈值时视为数值特征
+    numerical_threshold: 20  # 数值特征识别阈值
+
+  # 特征选择配置
+  feature_selection:
+    # 缺失率阈值：缺失率高于此值的特征将被移除
+    missing_rate_threshold: 0.95  # 特征缺失率阈值
+    # IV值阈值：IV值低于此值的特征将被移除（仅分类任务）
+    iv_threshold: 0.02  # 信息价值阈值
+    # 相关性阈值：相关性高于此值的特征对将被处理
+    correlation_threshold: 0.8  # 特征相关性阈值
+    # 方差阈值：方差低于此值的特征将被移除
+    variance_threshold: 0.01  # 特征方差阈值
+    # 互信息选择：选择互信息最高的K个特征
+    mutual_info_k: 20  # 互信息选择特征数量
+    # 特征重要性阈值：重要性低于此值的特征将被移除
+    importance_threshold: 0.01  # 特征重要性阈值
+    # F检验分类选择：选择F检验分类得分最高的K个特征
+    f_classif_k: 20  # F检验分类特征选择数量
+    # F检验回归选择：选择F检验回归得分最高的K个特征
+    f_regression_k: 20  # F检验回归特征选择数量
+    # 选择方法列表：可选值包括missing_rate, correlation, variance, mutual_info, importance, iv, f_classif, f_regression
+    selection_methods:  # 特征选择方法列表
+    - missing_rate
+    - correlation
+    - variance
+    - mutual_info
+    - importance
+    - iv
+
+  # 特征生成配置
+  feature_generation:
+    # 是否生成多项式特征
+    generate_polynomial: false  # 生成多项式特征开关
+    # 多项式次数：生成的多项式特征的最高次数
+    polynomial_degree: 2  # 多项式特征次数
+    # 是否包含偏差项：是否在多项式中包含常数项
+    polynomial_include_bias: false  # 多项式包含偏差项开关
+    # 是否生成交互特征
+    generate_interaction: false  # 生成交互特征开关
+    # 交互特征对：指定要生成交互特征的特征对，null表示生成所有可能的交互
+    interaction_pairs: null  # 指定交互特征对
+    # 是否生成统计特征
+    generate_statistical: false  # 生成统计特征开关
+    # 统计分组列：用于生成分组统计特征的列名列表
+    statistical_group_cols: null  # 统计特征分组列
+    # 是否生成分箱特征
+    generate_binning: false  # 生成分箱特征开关
+    # 分箱配置：为指定列配置分箱箱数，格式为{列名: 箱数}
+    bins_config: null  # 分箱配置
+    # 是否生成聚合特征
+    generate_aggregation: false  # 生成聚合特征开关
+    # 聚合窗口列：用于生成滑动窗口聚合特征的列名列表
+    aggregation_window_cols: null  # 聚合特征窗口列
+
+  # 其他配置
+  target_column: label  # 目标变量列名
+  unique_value_threshold: 10  # 唯一值数量阈值
+  early_stopping_rounds: 50  # 早停轮数
+  eval_metric: logloss  # 评估指标
   # 分类任务指标
-  primary_metric_classification: roc_auc
-  scoring_metrics_classification:
+  primary_metric_classification: roc_auc  # 分类主评估指标
+  scoring_metrics_classification:  # 分类评估指标列表
   - roc_auc
   - ks
-  target_column: label
-  unique_value_threshold: 10
-  use_advanced_engineering: false
-  use_category_feature: true
-  use_corr_selection: true
-  use_importance_selection: true
-  use_missing_selection: true
-  vif_threshold: 10.0
+  vif_threshold: 10.0  # 方差膨胀因子阈值
 
 logging:
   level: INFO

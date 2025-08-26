@@ -1,0 +1,76 @@
+{
+  "model_name": "LR",
+  "model_path": "models\\pipeline_test_creditcard_smote_LR.joblib",
+  "evaluation_results": {
+    "model_name": "LR",
+    "data_name": "test_creditcard",
+    "imbalance_method": "smote",
+    "metrics": {
+      "train_metrics": {
+        "accuracy": 0.910039113428944,
+        "precision": 0.9134816281245844,
+        "recall": 0.910039113428944,
+        "f1": 0.9093183174194378,
+        "auc": 0.9368299521688933,
+        "ks": 0.812097971301336
+      },
+      "test_metrics": {
+        "accuracy": 0.9179331306990881,
+        "precision": 0.9199578483632005,
+        "recall": 0.9179331306990881,
+        "f1": 0.9174706950068201,
+        "auc": 0.9375093325369569,
+        "ks": 0.8354113782290578
+      },
+      "detailed_report": {
+        "classification_report": {
+          "0": {
+            "precision": 0.8969072164948454,
+            "recall": 0.9613259668508287,
+            "f1-score": 0.928,
+            "support": 181.0
+          },
+          "1": {
+            "precision": 0.9481481481481482,
+            "recall": 0.8648648648648649,
+            "f1-score": 0.9045936395759717,
+            "support": 148.0
+          },
+          "accuracy": 0.9179331306990881,
+          "macro avg": {
+            "precision": 0.9225276823214967,
+            "recall": 0.9130954158578468,
+            "f1-score": 0.9162968197879859,
+            "support": 329.0
+          },
+          "weighted avg": {
+            "precision": 0.9199578483632005,
+            "recall": 0.9179331306990881,
+            "f1-score": 0.9174706950068201,
+            "support": 329.0
+          }
+        },
+        "confusion_matrix": [
+          [
+            174,
+            7
+          ],
+          [
+            20,
+            128
+          ]
+        ]
+      }
+    },
+    "best_params": {
+      "classifier__tol": 0.01,
+      "classifier__penalty": "l1",
+      "classifier__max_iter": 5000,
+      "classifier__C": 100
+    },
+    "training_time": 6.8548054695129395,
+    "feature_count": 18,
+    "status": "success"
+  },
+  "timestamp": "2025-08-26T13:55:18.698308"
+}

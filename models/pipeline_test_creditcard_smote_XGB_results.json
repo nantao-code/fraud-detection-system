@@ -1,0 +1,81 @@
+{
+  "model_name": "XGB",
+  "model_path": "models\\pipeline_test_creditcard_smote_XGB.joblib",
+  "evaluation_results": {
+    "model_name": "XGB",
+    "data_name": "test_creditcard",
+    "imbalance_method": "smote",
+    "metrics": {
+      "train_metrics": {
+        "accuracy": 0.9674054758800521,
+        "precision": 0.9678368503450328,
+        "recall": 0.9674054758800521,
+        "f1": 0.9673382434377679,
+        "auc": 0.9962958381439332,
+        "ks": 0.9362045741931937
+      },
+      "test_metrics": {
+        "accuracy": 0.9270516717325228,
+        "precision": 0.9277206863833003,
+        "recall": 0.9270516717325228,
+        "f1": 0.9268271310824502,
+        "auc": 0.9778258921905331,
+        "ks": 0.8575108257428699
+      },
+      "detailed_report": {
+        "classification_report": {
+          "0": {
+            "precision": 0.9153439153439153,
+            "recall": 0.9558011049723757,
+            "f1-score": 0.9351351351351351,
+            "support": 181.0
+          },
+          "1": {
+            "precision": 0.9428571428571428,
+            "recall": 0.8918918918918919,
+            "f1-score": 0.9166666666666666,
+            "support": 148.0
+          },
+          "accuracy": 0.9270516717325228,
+          "macro avg": {
+            "precision": 0.9291005291005291,
+            "recall": 0.9238464984321337,
+            "f1-score": 0.9259009009009009,
+            "support": 329.0
+          },
+          "weighted avg": {
+            "precision": 0.9277206863833003,
+            "recall": 0.9270516717325228,
+            "f1-score": 0.9268271310824502,
+            "support": 329.0
+          }
+        },
+        "confusion_matrix": [
+          [
+            173,
+            8
+          ],
+          [
+            16,
+            132
+          ]
+        ]
+      }
+    },
+    "best_params": {
+      "classifier__colsample_bytree": 0.9895022075365837,
+      "classifier__gamma": 0.11638567021515211,
+      "classifier__learning_rate": 0.03627586601451803,
+      "classifier__max_depth": 8,
+      "classifier__min_child_weight": 3,
+      "classifier__n_estimators": 1999,
+      "classifier__reg_alpha": 5.142344384136116,
+      "classifier__reg_lambda": 5.924145688620425,
+      "classifier__subsample": 0.6185801650879991
+    },
+    "training_time": 55.882843017578125,
+    "feature_count": 20,
+    "status": "success"
+  },
+  "timestamp": "2025-08-26T13:55:21.921303"
+}

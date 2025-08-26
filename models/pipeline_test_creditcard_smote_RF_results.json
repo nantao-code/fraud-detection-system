@@ -1,0 +1,78 @@
+{
+  "model_name": "RF",
+  "model_path": "models\\pipeline_test_creditcard_smote_RF.joblib",
+  "evaluation_results": {
+    "model_name": "RF",
+    "data_name": "test_creditcard",
+    "imbalance_method": "smote",
+    "metrics": {
+      "train_metrics": {
+        "accuracy": 0.9582790091264668,
+        "precision": 0.9595739459632879,
+        "recall": 0.9582790091264668,
+        "f1": 0.9581186459261911,
+        "auc": 0.9935331793941394,
+        "ks": 0.9184122271702677
+      },
+      "test_metrics": {
+        "accuracy": 0.9057750759878419,
+        "precision": 0.9061145961327038,
+        "recall": 0.9057750759878419,
+        "f1": 0.9055276760316955,
+        "auc": 0.9563237270419592,
+        "ks": 0.8280200089592356
+      },
+      "detailed_report": {
+        "classification_report": {
+          "0": {
+            "precision": 0.898936170212766,
+            "recall": 0.9337016574585635,
+            "f1-score": 0.9159891598915989,
+            "support": 181.0
+          },
+          "1": {
+            "precision": 0.9148936170212766,
+            "recall": 0.8716216216216216,
+            "f1-score": 0.8927335640138409,
+            "support": 148.0
+          },
+          "accuracy": 0.9057750759878419,
+          "macro avg": {
+            "precision": 0.9069148936170213,
+            "recall": 0.9026616395400926,
+            "f1-score": 0.9043613619527199,
+            "support": 329.0
+          },
+          "weighted avg": {
+            "precision": 0.9061145961327038,
+            "recall": 0.9057750759878419,
+            "f1-score": 0.9055276760316955,
+            "support": 329.0
+          }
+        },
+        "confusion_matrix": [
+          [
+            169,
+            12
+          ],
+          [
+            19,
+            129
+          ]
+        ]
+      }
+    },
+    "best_params": {
+      "classifier__bootstrap": true,
+      "classifier__max_depth": 9,
+      "classifier__max_features": null,
+      "classifier__min_samples_leaf": 8,
+      "classifier__min_samples_split": 5,
+      "classifier__n_estimators": 409
+    },
+    "training_time": 47.32394099235535,
+    "feature_count": 18,
+    "status": "success"
+  },
+  "timestamp": "2025-08-26T13:55:15.373984"
+}

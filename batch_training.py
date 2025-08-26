@@ -174,7 +174,7 @@ class BatchTrainer:
                 'timestamp': datetime.now().isoformat()
             }
     
-    def run_batch_training(self, dry_run=False):
+    def run_batch_training(self, dry_run=False, task_type = None):
         """执行批量训练"""
         
         # 获取参数网格
@@ -338,11 +338,11 @@ class BatchTrainer:
         
         # 生成结果汇总
         elapsed_time = time.time() - start_time
-        self.generate_summary_report(elapsed_time, completed_tasks, failed_tasks)
+        self.generate_summary_report(elapsed_time, completed_tasks, failed_tasks, task_type)
         
         return self.results
     
-    def generate_summary_report(self, elapsed_time, completed_tasks, failed_tasks):
+    def generate_summary_report(self, elapsed_time, completed_tasks, failed_tasks, task_type):
         """生成训练结果汇总报告"""
         
         # 清理所有结果中的不可序列化对象
@@ -383,7 +383,7 @@ class BatchTrainer:
         logger.info(f"详细结果已保存至: {report_path}")
         
         # 生成全局模型比较报告
-        self.generate_global_comparison_report()
+        self.generate_global_comparison_report(task_type)
         
         # 成功任务的结果摘要
         successful_results = [r for r in clean_results if r.get('status') == 'success']
@@ -394,7 +394,7 @@ class BatchTrainer:
                 run_id = result['run_id']
                 logger.info(f"  {run_id}: 模型={model}")
     
-    def generate_global_comparison_report(self):
+    def generate_global_comparison_report(self, task_type):
         """生成全局模型比较报告"""
         import pandas as pd
         
@@ -424,21 +424,42 @@ class BatchTrainer:
                     imbalance_method = parts[-3]
                     model_name = parts[-2]
                 
-                # 提取关键指标
+                
+                # 提取关键指标 - 根据任务类型选择不同的指标
                 evaluation_results = result_data.get('evaluation_results', {})
                 test_metrics = evaluation_results.get('metrics', {}).get('test_metrics', {})
-                model_results.append({
+                
+                # 基础信息
+                model_info = {
                     'data_name': data_name,
                     'imbalance_method': imbalance_method,
                     'model_name': model_name,
-                    'accuracy': test_metrics.get('accuracy', 0),
-                    'precision': test_metrics.get('precision', 0),
-                    'recall': test_metrics.get('recall', 0),
-                    'f1': test_metrics.get('f1', 0),
-                    'auc': test_metrics.get('auc', 0),
-                    'ks': test_metrics.get('ks', 0),
+                    'task_type': task_type,
                     'file_path': str(results_file)
-                })
+                }
+                
+                # 根据任务类型提取相应指标
+                if task_type == 'regression':
+                    # 回归任务指标
+                    model_info.update({
+                        'rmse': test_metrics.get('rmse', 0),
+                        'mae': test_metrics.get('mae', 0),
+                        'r2': test_metrics.get('r2', 0),
+                        'mse': test_metrics.get('mse', 0),
+                        'mape': test_metrics.get('mape', 0)
+                    })
+                else:
+                    # 分类任务指标（默认）
+                    model_info.update({
+                        'accuracy': test_metrics.get('accuracy', 0),
+                        'precision': test_metrics.get('precision', 0),
+                        'recall': test_metrics.get('recall', 0),
+                        'f1': test_metrics.get('f1', 0),
+                        'auc': test_metrics.get('auc', 0),
+                        'ks': test_metrics.get('ks', 0)
+                    })
+                
+                model_results.append(model_info)
                 
             except Exception as e:
                 logger.warning(f"跳过文件 {results_file}: {str(e)}")
@@ -450,43 +471,77 @@ class BatchTrainer:
         # 创建DataFrame
         df = pd.DataFrame(model_results)
         
-        # 按auc/ks分数排序
-        df = df.sort_values(['auc','ks'], ascending=False)
+        # 按任务类型分组处理
+        task_types = df['task_type'].unique()
         
-        # 生成时间戳用于文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 保存为CSV表格
-        csv_path = os.path.join(logs_dir, f'global_model_comparison_{timestamp}.csv')
-        df.to_csv(csv_path, index=False, encoding='utf-8')
-        
-        # 打印报告
-        logger.info("\n" + "="*80)
-        logger.info("全局模型比较报告")
-        logger.info("="*80)
-        logger.info(f"\n{df.to_string(index=False)}")
-        
-        # 生成汇总统计
-        summary_stats = {
-            'total_models': len(df),
-            'best_model': df.iloc[0]['model_name'] if len(df) > 0 else None,
-            'best_model_auc': df.iloc[0]['auc'] if len(df) > 0 else 0,
-            'best_model_ks': df.iloc[0]['ks'] if len(df) > 0 else 0,
-            'data_coverage': df['data_name'].nunique(),
-            'method_coverage': df['imbalance_method'].nunique(),
-            'model_coverage': df['model_name'].nunique()
-        }
-        
-        logger.info("\n汇总统计:")
-        logger.info(f"总模型数: {summary_stats['total_models']}")
-        logger.info(f"最佳模型: {summary_stats['best_model']} (AUC: {summary_stats['best_model_auc']:.4f}, KS: {summary_stats['best_model_ks']:.4f})")
-        logger.info(f"覆盖数据集: {summary_stats['data_coverage']} 个")
-        logger.info(f"覆盖不平衡处理方法: {summary_stats['method_coverage']} 个")
-        logger.info(f"覆盖模型类型: {summary_stats['model_coverage']} 个")
-        
-        logger.info("\n报告文件已保存:")
-        logger.info(f"📊 CSV表格: {csv_path}")
-        logger.info("="*80)
+        for task_type in task_types:
+            task_df = df[df['task_type'] == task_type].copy()
+            
+            if task_type == 'regression':
+                # 回归任务按R²排序（降序）
+                task_df = task_df.sort_values('r2', ascending=False)
+                sort_metric = 'r2'
+            else:
+                # 分类任务按AUC排序（降序）
+                task_df = task_df.sort_values('auc', ascending=False)
+                sort_metric = 'auc'
+            
+            # 生成时间戳用于文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # 保存为CSV表格
+            csv_path = os.path.join(logs_dir, f'global_model_comparison_{task_type}_{timestamp}.csv')
+            task_df.to_csv(csv_path, index=False, encoding='utf-8')
+            
+            # 打印报告
+            logger.info(f"\n{'='*80}")
+            logger.info(f"全局模型比较报告 - {task_type.upper()}任务")
+            logger.info(f"{'='*80}")
+            
+            # 选择要显示的列（根据任务类型）
+            if task_type == 'regression':
+                display_columns = ['data_name', 'imbalance_method', 'model_name', 'rmse', 'mae', 'r2', 'mape']
+            else:
+                display_columns = ['data_name', 'imbalance_method', 'model_name', 'accuracy', 'precision', 'recall', 'f1', 'auc', 'ks']
+            
+            display_df = task_df[display_columns]
+            logger.info(f"\n{display_df.to_string(index=False)}")
+            
+            # 生成汇总统计
+            summary_stats = {
+                'total_models': len(task_df),
+                'best_model': task_df.iloc[0]['model_name'] if len(task_df) > 0 else None,
+                'data_coverage': task_df['data_name'].nunique(),
+                'method_coverage': task_df['imbalance_method'].nunique(),
+                'model_coverage': task_df['model_name'].nunique()
+            }
+            
+            # 添加最佳模型指标
+            if task_type == 'regression':
+                summary_stats['best_model_r2'] = task_df.iloc[0]['r2'] if len(task_df) > 0 else 0
+                summary_stats['best_model_rmse'] = task_df.iloc[0]['rmse'] if len(task_df) > 0 else 0
+            else:
+                summary_stats['best_model_auc'] = task_df.iloc[0]['auc'] if len(task_df) > 0 else 0
+                summary_stats['best_model_ks'] = task_df.iloc[0]['ks'] if len(task_df) > 0 else 0
+            
+            logger.info(f"\n{task_type.upper()}任务汇总统计:")
+            logger.info(f"总模型数: {summary_stats['total_models']}")
+            logger.info(f"最佳模型: {summary_stats['best_model']}")
+            
+            if task_type == 'regression':
+                logger.info(f"最佳R²: {summary_stats['best_model_r2']:.4f}")
+                logger.info(f"最佳RMSE: {summary_stats['best_model_rmse']:.4f}")
+            else:
+                logger.info(f"最佳AUC: {summary_stats['best_model_auc']:.4f}")
+                logger.info(f"最佳KS: {summary_stats['best_model_ks']:.4f}")
+            
+            logger.info(f"覆盖数据集: {summary_stats['data_coverage']} 个")
+            logger.info(f"覆盖不平衡处理方法: {summary_stats['method_coverage']} 个")
+            logger.info(f"覆盖模型类型: {summary_stats['model_coverage']} 个")
+            
+            logger.info(f"\n报告文件已保存:")
+            logger.info(f"📊 {task_type.upper()}任务CSV表格: {csv_path}")
+            logger.info("="*80)
 
 
 def main():
@@ -541,7 +596,7 @@ def main():
         trainer = BatchTrainer(config_path)
         
         # 执行批量训练
-        trainer.run_batch_training(dry_run=args.dry_run)
+        trainer.run_batch_training(dry_run=args.dry_run, task_type = args.task)
         
     except Exception as e:
         logger.error(f"程序执行失败: {str(e)}")
